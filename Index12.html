@@ -1,0 +1,130 @@
+import SwiftUI
+
+struct HistoryView: View {
+    @EnvironmentObject var authVM: AuthViewModel
+    @State private var questions: [Question] = []
+    @State private var isLoading = true
+    @State private var selected: Question?
+
+    var body: some View {
+        ZStack {
+            Color(hex: "#080F08").ignoresSafeArea()
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Vos questions")
+                        .font(.custom("Georgia-BoldItalic", size: 24)).foregroundColor(.white)
+                    Spacer()
+                }
+                .padding(.horizontal, 20).padding(.vertical, 14)
+
+                if isLoading {
+                    Spacer(); ProgressView().tint(Color(hex: "#4A8C55")); Spacer()
+                } else if questions.isEmpty {
+                    Spacer()
+                    VStack(spacing: 10) {
+                        Text("📅").font(.system(size: 40))
+                        Text("Aucune question passée pour l'instant.")
+                            .font(.custom("Georgia-Italic", size: 15))
+                            .foregroundColor(Color.white.opacity(0.35)).multilineTextAlignment(.center)
+                    }
+                    Spacer()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            ForEach(questions) { q in
+                                Button { selected = q } label: { HistoryRow(question: q) }
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                    }
+                }
+            }
+        }
+        .sheet(item: $selected) { q in
+            if let coupleId = authVM.coupleId, let user = authVM.currentUser {
+                HistoryDetail(question: q, coupleId: coupleId, currentUser: user)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        let all = (try? await FirestoreService.shared.getRecentQuestions()) ?? []
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+        questions = all.filter { $0.id != today }
+        isLoading = false
+    }
+}
+
+struct HistoryRow: View {
+    let question: Question
+    var body: some View {
+        HStack(spacing: 14) {
+            Circle().fill(Color(hex: question.theme.color).opacity(0.12)).frame(width: 44, height: 44)
+                .overlay(Text(question.theme.emoji).font(.system(size: 20)))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(question.text).font(.system(size: 14)).foregroundColor(.white)
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                Text(question.generatedAt, style: .date).font(.system(size: 11))
+                    .foregroundColor(Color.white.opacity(0.3))
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(.system(size: 11))
+                .foregroundColor(Color.white.opacity(0.18))
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.04)))
+    }
+}
+
+struct HistoryDetail: View {
+    let question: Question
+    let coupleId: String
+    let currentUser: BrinUser
+    @State private var messages: [Message] = []
+    @State private var isLoading = true
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        ZStack {
+            Color(hex: "#080F08").ignoresSafeArea()
+            VStack(spacing: 0) {
+                HStack {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 26))
+                            .foregroundColor(Color.white.opacity(0.25))
+                    }
+                    Spacer()
+                }.padding(16)
+
+                QuestionCard(question: question).padding(.horizontal, 16)
+                Divider().background(Color.white.opacity(0.07)).padding(.vertical, 12)
+
+                if isLoading {
+                    Spacer(); ProgressView().tint(Color(hex: "#4A8C55")); Spacer()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            if messages.isEmpty {
+                                Text("Aucune réponse pour cette question")
+                                    .font(.system(size: 14)).foregroundColor(Color.white.opacity(0.3))
+                                    .padding(.top, 40)
+                            }
+                            ForEach(messages) { msg in
+                                BubbleView(message: msg, isFromMe: msg.senderId == currentUser.id)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+            }
+        }
+        .task {
+            messages = (try? await FirestoreService.shared.getMessagesForQuestion(
+                coupleId: coupleId, questionId: question.id)) ?? []
+            isLoading = false
+        }
+    }
+}
