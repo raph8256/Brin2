@@ -1,0 +1,103 @@
+import Foundation
+import FirebaseFirestore
+import FirebaseAuth
+
+class FirestoreService {
+    static let shared = FirestoreService()
+    private let db = Firestore.firestore()
+    private init() {}
+
+    // MARK: - Users
+    func createUser(_ user: BrinUser) async throws {
+        try db.collection("users").document(user.id).setData(from: user)
+    }
+
+    func getUser(uid: String) async throws -> BrinUser {
+        let doc = try await db.collection("users").document(uid).getDocument()
+        guard doc.exists else { throw BrinError.userNotFound }
+        return try doc.data(as: BrinUser.self)
+    }
+
+    func listenToUser(uid: String, completion: @escaping (BrinUser?) -> Void) -> ListenerRegistration {
+        db.collection("users").document(uid).addSnapshotListener { snap, _ in
+            completion(try? snap?.data(as: BrinUser.self))
+        }
+    }
+
+    func updateFCMToken(_ token: String, uid: String) async throws {
+        try await db.collection("users").document(uid).updateData(["fcmToken": token])
+    }
+
+    func findUserByPairingCode(_ code: String) async throws -> BrinUser? {
+        let snap = try await db.collection("users")
+            .whereField("pairingCode", isEqualTo: code)
+            .limit(to: 1)
+            .getDocuments()
+        return try snap.documents.first.map { try $0.data(as: BrinUser.self) }
+    }
+
+    // MARK: - Couple
+    func createCouple(user1: BrinUser, user2: BrinUser) async throws -> Couple {
+        let coupleId = UUID().uuidString
+        let couple = Couple(
+            id: coupleId,
+            members: [user1.id, user2.id],
+            memberNames: [user1.id: user1.displayName, user2.id: user2.displayName],
+            createdAt: Date()
+        )
+        try db.collection("couples").document(coupleId).setData(from: couple)
+        try await db.collection("users").document(user1.id).updateData(["coupleId": coupleId, "pairingCode": FieldValue.delete()])
+        try await db.collection("users").document(user2.id).updateData(["coupleId": coupleId, "pairingCode": FieldValue.delete()])
+        return couple
+    }
+
+    // MARK: - Questions
+    func getQuestion(id: String) async throws -> Question? {
+        let doc = try await db.collection("questions").document(id).getDocument()
+        guard doc.exists else { return nil }
+        return try doc.data(as: Question.self)
+    }
+
+    func getRecentQuestions(limit: Int = 30) async throws -> [Question] {
+        let snap = try await db.collection("questions")
+            .order(by: "generatedAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+        return try snap.documents.compactMap { try $0.data(as: Question.self) }
+    }
+
+    // MARK: - Messages
+    func sendMessage(_ message: Message, coupleId: String) async throws {
+        try db.collection("couples").document(coupleId)
+            .collection("messages").document(message.id)
+            .setData(from: message)
+    }
+
+    func listenToMessages(coupleId: String, questionId: String,
+                          completion: @escaping ([Message]) -> Void) -> ListenerRegistration {
+        db.collection("couples").document(coupleId)
+            .collection("messages")
+            .whereField("questionId", isEqualTo: questionId)
+            .order(by: "sentAt", descending: false)
+            .addSnapshotListener { snap, _ in
+                let messages = (try? snap?.documents.compactMap { try $0.data(as: Message.self) }) ?? []
+                completion(messages)
+            }
+    }
+
+    func getMessagesForQuestion(coupleId: String, questionId: String) async throws -> [Message] {
+        let snap = try await db.collection("couples").document(coupleId)
+            .collection("messages")
+            .whereField("questionId", isEqualTo: questionId)
+            .order(by: "sentAt", descending: false)
+            .getDocuments()
+        return try snap.documents.compactMap { try $0.data(as: Message.self) }
+    }
+}
+
+enum BrinError: LocalizedError {
+    case userNotFound
+    var errorDescription: String? {
+        switch self { case .userNotFound: return "Utilisateur introuvable" }
+    }
+}
