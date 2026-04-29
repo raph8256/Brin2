@@ -1,0 +1,12 @@
+import Foundation
+import FirebaseAuth
+
+class NotificationService {
+    static let shared = NotificationService()
+    private init() {}
+
+    func saveFCMToken(_ token: String) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        Task { try? await FirestoreService.shared.updateFCMToken(token, uid: uid) }
+    }
+}
