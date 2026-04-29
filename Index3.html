@@ -1,0 +1,92 @@
+import Foundation
+import FirebaseFirestore
+
+// MARK: - User
+struct BrinUser: Identifiable, Codable {
+    var id: String
+    var email: String
+    var displayName: String
+    var coupleId: String?
+    var pairingCode: String?
+    var fcmToken: String?
+    var createdAt: Date
+
+    init(id: String, email: String, displayName: String) {
+        self.id = id
+        self.email = email
+        self.displayName = displayName
+        self.pairingCode = String(Int.random(in: 100000...999999))
+        self.createdAt = Date()
+    }
+}
+
+// MARK: - Couple
+struct Couple: Identifiable, Codable {
+    var id: String
+    var members: [String]
+    var memberNames: [String: String]
+    var createdAt: Date
+
+    func partnerName(for userId: String) -> String {
+        memberNames.first(where: { $0.key != userId })?.value ?? "Partenaire"
+    }
+}
+
+// MARK: - Question
+struct Question: Identifiable, Codable {
+    var id: String          // YYYY-MM-DD
+    var text: String
+    var theme: QuestionTheme
+    var emoji: String
+    var generatedAt: Date
+}
+
+enum QuestionTheme: String, Codable, CaseIterable {
+    case couple, futur, enfants, politique, intimite, reves, philosophie
+
+    var label: String {
+        switch self {
+        case .couple:       return "Couple"
+        case .futur:        return "Futur"
+        case .enfants:      return "Enfants"
+        case .politique:    return "Société"
+        case .intimite:     return "Intimité"
+        case .reves:        return "Rêves"
+        case .philosophie:  return "Philo"
+        }
+    }
+
+    var emoji: String {
+        switch self {
+        case .couple:       return "❤️"
+        case .futur:        return "🌍"
+        case .enfants:      return "👶"
+        case .politique:    return "🗳️"
+        case .intimite:     return "💋"
+        case .reves:        return "🌙"
+        case .philosophie:  return "🤔"
+        }
+    }
+
+    var color: String {
+        switch self {
+        case .couple:       return "#A8E6B0"
+        case .futur:        return "#8ED4C8"
+        case .enfants:      return "#F0D080"
+        case .politique:    return "#98D4A0"
+        case .intimite:     return "#E8A8B0"
+        case .reves:        return "#C0A8E0"
+        case .philosophie:  return "#90C8D8"
+        }
+    }
+}
+
+// MARK: - Message
+struct Message: Identifiable, Codable {
+    var id: String
+    var questionId: String
+    var senderId: String
+    var senderName: String
+    var text: String
+    var sentAt: Date
+}
