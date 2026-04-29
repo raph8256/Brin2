@@ -1,0 +1,50 @@
+import SwiftUI
+import Firebase
+
+@main
+struct BrinApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var authViewModel = AuthViewModel()
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environmentObject(authViewModel)
+                .preferredColorScheme(.dark)
+        }
+    }
+}
+
+struct RootView: View {
+    @EnvironmentObject var authVM: AuthViewModel
+
+    var body: some View {
+        Group {
+            if authVM.isLoading {
+                SplashView()
+            } else if authVM.currentUser == nil {
+                LoginView()
+            } else if authVM.coupleId == nil {
+                PairingView()
+            } else {
+                MainTabView()
+            }
+        }
+        .animation(.easeInOut(duration: 0.35), value: authVM.currentUser?.uid)
+    }
+}
+
+struct SplashView: View {
+    var body: some View {
+        ZStack {
+            Color(hex: "#0D0F0D").ignoresSafeArea()
+            VStack(spacing: 10) {
+                Text("🌿")
+                    .font(.system(size: 60))
+                Text("Brin")
+                    .font(.custom("Georgia-BoldItalic", size: 42))
+                    .foregroundColor(.white)
+            }
+        }
+    }
+}
