@@ -1,0 +1,54 @@
+import Foundation
+import FirebaseFirestore
+
+@MainActor
+class TodayViewModel: ObservableObject {
+    @Published var question: Question?
+    @Published var messages: [Message] = []
+    @Published var isLoadingQuestion = true
+    @Published var isSending = false
+    @Published var newMessageText = ""
+
+    private var messagesListener: ListenerRegistration?
+    private let coupleId: String
+    private let currentUser: BrinUser
+
+    init(coupleId: String, currentUser: BrinUser) {
+        self.coupleId = coupleId
+        self.currentUser = currentUser
+        Task { await loadTodayQuestion() }
+    }
+
+    deinit { messagesListener?.remove() }
+
+    func loadTodayQuestion() async {
+        isLoadingQuestion = true
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let todayId = formatter.string(from: Date())
+        question = try? await FirestoreService.shared.getQuestion(id: todayId)
+        if let q = question { listenToMessages(questionId: q.id) }
+        isLoadingQuestion = false
+    }
+
+    private func listenToMessages(questionId: String) {
+        messagesListener?.remove()
+        messagesListener = FirestoreService.shared.listenToMessages(
+            coupleId: coupleId, questionId: questionId
+        ) { [weak self] in self?.messages = $0 }
+    }
+
+    func sendMessage() async {
+        let text = newMessageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let question else { return }
+        isSending = true
+        newMessageText = ""
+        let msg = Message(id: UUID().uuidString, questionId: question.id,
+                          senderId: currentUser.id, senderName: currentUser.displayName,
+                          text: text, sentAt: Date())
+        try? await FirestoreService.shared.sendMessage(msg, coupleId: coupleId)
+        isSending = false
+    }
+
+    func isFromMe(_ message: Message) -> Bool { message.senderId == currentUser.id }
+}
